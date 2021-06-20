@@ -14,14 +14,14 @@ import 'package:light_app/ui/round_slider_track_shape.dart';
 import 'package:light_app/util/database_service.dart';
 import 'package:light_app/util/secret.dart';
 import 'package:light_app/util/secret_loader.dart';
+import 'package:provider/provider.dart';
 
 import 'overview_page.dart';
 
 class MainControlPage extends StatefulWidget {
-  final List<Room> _rooms;
   final Secret _secret;
 
-  MainControlPage(this._rooms, this._secret);
+  MainControlPage(this._secret);
 
   @override
   State<StatefulWidget> createState() => MainControlPageState();
@@ -31,9 +31,6 @@ class MainControlPageState extends State<MainControlPage>
     with WidgetsBindingObserver {
   MQTTClientWrapper mqttClientWrapper;
   static Room currentRoom;
-  Temperature currentTemp;
-  double sliderValue =
-      currentRoom != null ? currentRoom.getAverageBrightness() : 0.0;
   bool sliderChanged = false;
   PageController pageController = PageController(initialPage: 0);
   DatabaseService dbService = DatabaseService();
@@ -42,8 +39,7 @@ class MainControlPageState extends State<MainControlPage>
   @override
   void initState() {
     super.initState();
-    currentRoom = widget._rooms[0];
-    sliderValue = currentRoom.getAverageBrightness();
+    currentRoom = Provider.of<Room>(context, listen: false);
     setupMqttClientWrapper();
     WidgetsBinding.instance.addObserver(this);
     presets = dbService.getPresets();
@@ -75,19 +71,9 @@ class MainControlPageState extends State<MainControlPage>
   setupMqttClientWrapper() async {
     Secret secret = await SecretLoader(secretPath: "secrets.json").load();
     mqttClientWrapper = MQTTClientWrapper(secret.mqttHost, 'phone_client', 1883,
-        () => {}, (message, topic) => gotMessage(message, topic),
+        () => {}, context,
         username: secret.mqttUsername, password: secret.mqttPassword);
     mqttClientWrapper.prepareMqttClient();
-  }
-
-  gotMessage(String message, String topic) {
-    if (topic == MQTTClientWrapper.temperatureTopic) {
-      this.currentTemp = Temperature.fromJson(jsonDecode(message));
-      setState(() {});
-    } else if (topic == MQTTClientWrapper.lightTopic) {
-      widget._rooms[0].fromJson(jsonDecode(message));
-      setState(() {});
-    }
   }
 
   setBrightness(double brightness) {
@@ -97,10 +83,6 @@ class MainControlPageState extends State<MainControlPage>
   void changeCurrentRoom(Room room) {
     currentRoom = room;
     setState(() {});
-  }
-
-  double getSliderValue() {
-    return sliderChanged ? sliderValue : currentRoom.getAverageBrightness();
   }
 
   publishMessage(String message) {
@@ -169,161 +151,176 @@ class MainControlPageState extends State<MainControlPage>
             print('Page Changes to index $int');
           },
           children: [
-            SingleChildScrollView(
-              child: Stack(
-                children: [
-                  Column(
+            Consumer<Room>(
+              builder: (context, room, child) {
+                return SingleChildScrollView(
+                  child: Stack(
                     children: [
-                      Container(
-                        height: 200,
-                        width: double.infinity,
-                        color: Colors.green[300],
+                      Column(
+                        children: [
+                          Container(
+                            height: 200,
+                            width: double.infinity,
+                            color: Colors.green[300],
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 25),
-                    child: Column(
-                      children: [
-                        Container(
-                          height: 65,
-                        ),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 25),
+                        child: Column(
                           children: [
-                            Text(
-                              "Tuinhuis",
-                              style: TextStyle(
-                                  fontFamily: 'Ubuntu',
-                                  fontSize: 45,
-                                  color: Colors.white),
+                            Container(
+                              height: 65,
                             ),
-                            CustomSwitch(
-                              value: currentRoom.lightOn(),
-                              onChanged: (bool value) {
-                                if (value == true) {
-                                  double brightness = 0.5;
-                                  sliderValue = brightness;
-                                  currentRoom.setLightState(brightness, true);
-                                } else {
-                                  double brightness = 0;
-                                  sliderValue = brightness;
-                                  currentRoom.setLightState(brightness, false);
-                                }
-                                publishMessage(
-                                    jsonEncode(currentRoom.toJson()));
-                                this.setState(() {});
-                              },
-                            )
-                          ],
-                        ),
-                        MainInformationWidget(currentRoom, currentTemp),
-                        Container(height: 20),
-                        Container(
-                          child: Column(
-                            children: <Widget>[
-                              SliderTheme(
-                                data: Theme.of(context).sliderTheme.copyWith(
-                                      trackHeight: 30.0,
-                                      thumbShape: RoundSliderThumbShape(
-                                          enabledThumbRadius: 15),
-                                      trackShape: RoundSliderTrackShape(),
-                                      activeTrackColor: Colors.green,
-                                    ),
-                                child: Slider(
-                                  divisions: 10,
-                                  inactiveColor: Colors.grey[100],
-                                  activeColor: Theme.of(context).accentColor,
-                                  min: 0.0,
-                                  max: 1.0,
-                                  onChangeEnd: (brightness) {
-                                    sliderValue = brightness;
-                                    currentRoom.setLightState(brightness, true);
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  "Tuinhuis",
+                                  style: TextStyle(
+                                      fontFamily: 'Ubuntu',
+                                      fontSize: 45,
+                                      color: Colors.white),
+                                ),
+                                CustomSwitch(
+                                  value: currentRoom.lightOn(),
+                                  onChanged: (bool value) {
+                                    if (value == true) {
+                                      double brightness = 0.5;
+                                      currentRoom.setLightState(
+                                          brightness, true);
+                                    } else {
+                                      double brightness = 0;
+                                      currentRoom.setLightState(
+                                          brightness, false);
+                                    }
                                     publishMessage(
                                         jsonEncode(currentRoom.toJson()));
-                                    sliderChanged = true;
+                                    this.setState(() {});
                                   },
-                                  value: getSliderValue(),
-                                  onChanged: (brightness) {
-                                    sliderValue = brightness;
-                                    currentRoom.setLightState(brightness, true);
-                                    sliderChanged = true;
-                                    setState(() {});
-                                  },
-                                ),
+                                )
+                              ],
+                            ),
+                            MainInformationWidget(currentRoom, currentRoom.temperature),
+                            Container(height: 20),
+                            Container(
+                              child: Column(
+                                children: <Widget>[
+                                  SliderTheme(
+                                    data: Theme.of(context)
+                                        .sliderTheme
+                                        .copyWith(
+                                          trackHeight: 30.0,
+                                          thumbShape: RoundSliderThumbShape(
+                                              enabledThumbRadius: 15),
+                                          trackShape: RoundSliderTrackShape(),
+                                          activeTrackColor: Colors.green,
+                                        ),
+                                    child: Slider(
+                                      divisions: 10,
+                                      inactiveColor: Colors.grey[100],
+                                      activeColor:
+                                          Theme.of(context).accentColor,
+                                      min: 0.0,
+                                      max: 1.0,
+                                      onChangeEnd: (brightness) {
+                                        currentRoom.setLightState(
+                                            brightness, true);
+                                        publishMessage(
+                                            jsonEncode(currentRoom.toJson()));
+                                        sliderChanged = true;
+                                      },
+                                      value: Provider.of<Room>(context,
+                                              listen: false)
+                                          .getAverageBrightness(),
+                                      onChanged: (brightness) {
+                                        currentRoom.setLightState(
+                                            brightness, true);
+                                        sliderChanged = true;
+                                        setState(() {});
+                                      },
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          height: 15,
-                        ),
-                        Divider(
-                          thickness: 1,
-                        ),
-                        Container(
-                          height: 10,
-                        ),
-                        Column(children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text(
-                                "Presets",
-                                style: TextStyle(
-                                    fontSize: 24,
-                                    color: Colors.green[300],
-                                    fontWeight: FontWeight.bold),
+                            ),
+                            Container(
+                              height: 15,
+                            ),
+                            Divider(
+                              thickness: 1,
+                            ),
+                            Container(
+                              height: 10,
+                            ),
+                            Column(children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    "Presets",
+                                    style: TextStyle(
+                                        fontSize: 24,
+                                        color: Colors.green[300],
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  IconButton(
+                                      icon: Icon(Icons.add, size: 28),
+                                      color: Colors.green[300],
+                                      onPressed: () =>
+                                          _awaitPresetPage(context))
+                                ],
                               ),
-                              IconButton(
-                                  icon: Icon(Icons.add, size: 28),
-                                  color: Colors.green[300],
-                                  onPressed: () => _awaitPresetPage(context))
-                            ],
-                          ),
-                          FutureBuilder(
-                            builder: (context, presets) {
-                              if (presets.connectionState ==
-                                      ConnectionState.done &&
-                                  presets.hasData) {
-                                if (presets.data.length > 0) {
-                                  currentRoom.presets = presets.data;
-                                  return Container(
-                                    height: (presets.data.length * 70) +
-                                        30.toDouble(),
-                                    child: ListView.builder(
-                                        physics: NeverScrollableScrollPhysics(),
-                                        itemCount: presets.data.length,
-                                        padding:
-                                            EdgeInsets.symmetric(vertical: 15),
-                                        itemBuilder: (context, i) {
-                                          return PresetListItem(presets.data[i],
-                                              currentRoom, update);
-                                        }),
-                                  );
-                                } else {
+                              FutureBuilder(
+                                builder: (context, presets) {
+                                  if (presets.connectionState ==
+                                          ConnectionState.done &&
+                                      presets.hasData) {
+                                    if (presets.data.length > 0) {
+                                      currentRoom.presets = presets.data;
+                                      return Container(
+                                        height: (presets.data.length * 70) +
+                                            30.toDouble(),
+                                        child: ListView.builder(
+                                            physics:
+                                                NeverScrollableScrollPhysics(),
+                                            itemCount: presets.data.length,
+                                            padding: EdgeInsets.symmetric(
+                                                vertical: 15),
+                                            itemBuilder: (context, i) {
+                                              return PresetListItem(
+                                                  presets.data[i],
+                                                  currentRoom,
+                                                  update);
+                                            }),
+                                      );
+                                    } else {
+                                      return Padding(
+                                          padding: EdgeInsets.symmetric(
+                                              vertical: 10),
+                                          child: Text(
+                                              "Je hebt nog geen presets ingesteld",
+                                              style: TextStyle(fontSize: 16)));
+                                    }
+                                  }
                                   return Padding(
                                       padding:
                                           EdgeInsets.symmetric(vertical: 10),
-                                      child: Text(
-                                          "Je hebt nog geen presets ingesteld",
-                                          style: TextStyle(fontSize: 16)));
-                                }
-                              }
-                              return Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 10),
-                                  child: CircularProgressIndicator());
-                            },
-                            future: presets,
-                          )
-                        ])
-                      ],
-                    ),
+                                      child: CircularProgressIndicator());
+                                },
+                                future: presets,
+                              )
+                            ])
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             ),
-            OverviewPage(currentRoom, mqttClientWrapper)
+            OverviewPage(mqttClientWrapper)
           ]),
     );
   }

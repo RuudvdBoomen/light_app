@@ -6,13 +6,28 @@ import 'package:light_app/ui/round_slider_track_shape.dart';
 import 'package:light_app/util/database_service.dart';
 import 'package:light_app/util/secret.dart';
 import 'package:light_app/util/secret_loader.dart';
+import 'package:provider/provider.dart';
 
 import 'objects/preset.dart';
+
+List<Light> _lamps = [
+  Light("Lamp 1"),
+  Light("Lamp 2"),
+  Light("Lamp 3"),
+  Light("Lamp 4"),
+  Light("Lamp 5"),
+  Light("Lamp 6"),
+  Light("Lamp 7"),
+  Light("Lamp 8"),
+];
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   DatabaseService();
-  runApp(MyApp());
+  runApp(ChangeNotifierProvider(
+    create: (context) => Room("Tuinhuis", _lamps),
+    child: MyApp(),
+  ));
 }
 
 class MyApp extends StatefulWidget {
@@ -21,19 +36,6 @@ class MyApp extends StatefulWidget {
 }
 
 class MyAppState extends State<MyApp> {
-  static List<Light> _lamps = [
-    Light("Lamp 1"),
-    Light("Lamp 2"),
-    Light("Lamp 3"),
-    Light("Lamp 4"),
-    Light("Lamp 5"),
-    Light("Lamp 6"),
-    Light("Lamp 7"),
-    Light("Lamp 8"),
-  ];
-  List<Room> rooms = [
-    Room("Tuinhuis", _lamps),
-  ];
   Secret secret;
 
   @override
@@ -51,8 +53,7 @@ class MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    MainControlPage mainControlPage = MainControlPage(rooms, secret);
-
+    MainControlPage mainControlPage = MainControlPage(secret);
     return MaterialApp(
       theme: ThemeData(
           primaryColor: Colors.green[300],
